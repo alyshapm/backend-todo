@@ -1,5 +1,10 @@
-from fastapi import Depends, FastAPI, HTTPException
+from fastapi import Depends, FastAPI, HTTPException, Response
 from sqlalchemy.orm import Session
+from uuid import UUID, uuid4
+
+from fastapi_sessions.backends.implementations import InMemoryBackend
+from fastapi_sessions.session_verifier import SessionVerifier
+from fastapi_sessions.frontends.implementations import SessionCookie, CookieParameters
 
 from . import crud, models, schemas
 from .database import SessionLocal, engine
@@ -7,6 +12,29 @@ from .database import SessionLocal, engine
 models.Base.metadata.create_all(bind=engine)
 
 app = FastAPI()
+
+# SESSIONS
+@app.post("/create_session/{user_id}")
+async def create_session(user_id: str, response: Response):
+
+    session = uuid4()
+    data = schemas.SessionData(user_id=user_id)
+
+    await schemas.backend.create(session, data)
+    schemas.cookie.attach_to_response(response, session)
+
+    return f"created session for {user_id}"
+
+@app.get("/whoami", dependencies=[Depends(schemas.cookie)])
+async def whoami(session_data: schemas.SessionData = Depends(schemas.verifier)):
+    return session_data
+
+
+@app.post("/delete_session")
+async def del_session(response: Response, session_id: UUID = Depends(schemas.cookie)):
+    await schemas.backend.delete(session_id)
+    schemas.cookie.delete_from_response(response)
+    return "deleted session"
 
 
 # Dependency
